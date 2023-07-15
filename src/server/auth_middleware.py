@@ -9,7 +9,8 @@ class AuthMiddleware:
         
     async def __call__(self, request: Request, call_next):
         '''Verifies the token in the request header'''
-        if request.url.path.startswith('/img/') or request.url.path.startswith('/favicon.ico'):
+        print(request.url.path)
+        if request.url.path.startswith('/img/') or request.url.path in ('/favicon.ico', '/', '/openapi.json', '/docs'):
             response = await call_next(request)
             return response
         try:
