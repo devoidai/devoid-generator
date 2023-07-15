@@ -1,183 +1,201 @@
-# Devoid Generator Client
-**Client for [Devoid Generator](https://github.com/devoidai/devoid-generator).**
+# Devoid Generator
+**Official python client [Devoid Client](https://github.com/devoidai/devoid-client).**
 
+`FastAPI`
+`MongoDB`
+`Using s3 bucket storage`
 `Fully asynchronous`
 `Works with websockets`
 `Priority requests feature`
-`Additional separate queue for each user`
 `Average generation time`
+`Requests Balancer`
+`Works with Kandinsky and Automatic1111`
+
 ## Setup
 
-Devoid Generator Client requires [python 3.10.6](https://www.python.org/downloads/release/python-3106/) to run.
+Devoid Generator requires [python 3.10.6](https://www.python.org/downloads/release/python-3106/) to run.
 
-Install the dependencies:
+**Install the dependencies:**
 
 ```sh
-cd devoid-client
+cd devoid-generator
 pip install -r requirements.txt
 ```
 
-## Example of usage:
-
-### Client
-Creating main client:
-
+**Configure .env file:**
 ```python
-import devoid_client 
+TEST_MODE = 1
 
-client = GeneratorClient(
-    endpoint=GENERATOR_ENDPOINT,
-    service=SERVICE_NAME,
-    token=SERVICE_TOKEN
-)
+LOGGING_LEVEL=INFO
 
-# Running client in existing loop
-loop = asyncio.get_running_loop()
-client.run(loop)
+SAVE_IMAGES_LOCALLY=0
+IMAGES_PATH=gens/
+
+MONGODB_URI=
+MONGODB_DB=
+
+S3_ENDPOINT=
+S3_ACCESS_KEY=
+S3_SECRET_KEY=
+S3_BUCKET_NAME=
+S3_IMAGE_ENDPOINT=
+
+SERVICES=telegram:service_key discord:service_key web:service_key
+
+API_HOST=0.0.0.0 
+API_PORT=80
+
+GENERAL_PREMIUM_RATIO=1 3
+
+KANDINSKY_API_TOKEN=
+```
+Run:
+
+```sh
+python src/main.py
 ```
 
-### Handlers
-**You can register 5 handlers for intermediate and final generation results:**
+If everything is done correctly, the server will be launched at http://localhost:80.
 
-Import generation result representation:
-```python
-from devoid_client import GenerationResponse
-```
 
-**Create handlers and register it in client:**
+## Documentation
+
+After the run, the documentation will be available at http://localhost:80/docs.
+
+### Enums
 ```python
-# Websocket connection error handler
-async def connection_error_handler(exception: Exception):
-    print(f'[{type(exception)}] {exception}')
+Service:
+    TELEGRAM = "telegram"
+    DISCORD = "discord"
+    TEST = "test"
     
-client.register_con_error_handler(connection_error_handler)
-```
-
-```python
-# Image Generation done handler
-async def request_done_handler(response: GenerationResponse):
-    request_id = response.object_id
-    result = response.result.content
-    user = response.service_info.user_id
+MessageType:
+    REQUEST = "request"
+    RESPONSE = "response"
+    INFO = "info"
     
-client.register_req_done_handler(request_done_handler)
-```
-
-```python
-# Image Generation error
-async def request_error_handler(response: GenerationResponse):
-    request_id = response.object_id
-    error_text = response.result.content
-    user = response.service_info.user_id
+GenType:
+    TEXT2IMG = "text2img"
+    IMG2IMG = "img2img"
+    MIX2IMG = "mix2img"
     
-client.register_req_error_handler(request_error_handler)
-```
-
-```python
-# Image Generation request queued
-async def request_queued_handler(response: GenerationResponse):
-    request_id = response.object_id
-    user = response.service_info.user_id
-    average_time = response.avg_time
+GenStatus:
+    OK = "ok"
+    ERROR = "error"
+    QUEUED = "queued"
+    GENERATING = "generating"
     
-client.register_req_queued_handler(request_queued_handler)
+ContentType:
+    TEXT = "text"
+    BASE64 = "base64"
+    IMAGE_URL = "image_url"
+
+ExecutorType:
+    KANDINSKY = "kandinsky"
+    AUTOMATIC1111 = "automatic1111"
 ```
 
-```python
-# When image starts generating
-async def request_generating_handler(response: GenerationResponse):
-    request_id = response.object_id
-    user = response.service_info.user_id
+### Websockets
+Websocket endpoint: `ws://localhost:80/ws`. It is used to queue a request and return the results of generation.
 
-client.register_req_generating_handler(request_generating_handler)
-```
 
-## Image Generation
+## Websocket Messaging
+
 Devoid Generator works as a *request balancer*. It does not change (only validates) payload for [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) and [Devoid Kandinsky Api](https://github.com/devoidai/kandinsky_api). So for a detailed description of the **payload** parameter, refer to the official documentation of the listed apis.
 
-**General parameters:**
-* executor - Type of executor: Kandinsky or Automatic1111
-* premium - Should be 1 for highest priority
-* moderate - Prompt moderation
-* sync_with_s3 - Wait for saving in s3
-* user_id - Required parameter. It is necessary to identify the end user.
-* chat_id - Optional
-* message_id - Optional
-* payload - Payload for Automatic1111 or Kandinsky
-* max_user_queue_size - The maximum queue size for the user
-
-
-
-
-## Kandinsky
-**mix2img**
-Prepare images for request:
+### Client -> Devoid Generator
+**Generation request**
 ```python
-with open("example.png", "rb") as image:
-    f1 = base64.b64encode(image.read())
-    f1 = f1.decode('ascii')
+{
+    "message_type": MessageType,
+    "executor": ExecutorType,
+    "gen_type": GenType,
+    "settings": {
+        "premium": 1,
+        "moderate": 1,
+        "sync_with_s3": 1
+    },
+    "service_info": {
+        "user_id": 123,
+        "chat_id": 123,     # Optional
+        "message_id": 123   # Optional
+    },
+    "payload": PAYLOAD
+}
 ```
 
-Sending a request:
+### Devoid Generator -> Client
+**Request Queued or Generating**
 ```python
-await client1.mix2img(
-    executor=Executor.KANDINSKY, 
-    premium=1, 
-    moderate=1, 
-    sync_with_s3=True,
-    user_id=2, 
-    chat_id=2, 
-    message_id=2, 
-    payload=kandinsky_mix2img_payload,
-    max_user_queue_size=1
-)
+{
+    "object_id": id,
+    "service": Service,
+    "message_type": MessageType,
+    "executor": ExecutorType,
+    "gen_type": GenType,
+    "gen_status": GenStatus,
+    "avg_time": 0.0,
+    "service_info": {
+        "user_id": 123,
+        "chat_id": 123,     # Optional
+        "message_id": 123   # Optional
+    }
+}
 ```
 
-**text2img**
-Sending a request:
+**Request Done**
 ```python
-# text2img - automatic
-await client1.text2img(
-    executor=Executor.KANDINSKY, 
-    premium=1, 
-    moderate=1, 
-    sync_with_s3=True, 
-    user_id=1, 
-    chat_id=1, 
-    message_id=1, 
-    payload=kandinsky_text2img_payload, 
-    max_user_queue_size=2
-)
+{
+    "object_id": id,
+    "service": Service,
+    "message_type": MessageType,
+    "executor": ExecutorType,
+    "gen_type": GenType,
+    "gen_status": GenStatus,
+    "avg_time": 0.0,
+    "result": {
+        "content_type": ContentType,
+        "content": 0,
+        "file_name": ''
+    },
+    "settings": {
+        "premium": 1,
+        "moderate": 1,
+        "sync_with_s3": 1
+    },
+    "service_info": {
+        "user_id": 123,
+        "chat_id": 123,     # Optional
+        "message_id": 123   # Optional
+    },
+    "payload": PAYLOAD
+}
 ```
 
-## Automatic1111
-**img2img**
+**Request Error**
 ```python
-await client1.img2img(
-    executor=Executor.AUTOMATIC1111, 
-    premium=1, 
-    moderate=1, 
-    sync_with_s3=True, 
-    user_id=1, 
-    chat_id=1, 
-    message_id=1, 
-    payload=automatic1111_img2img_payload, 
-    max_user_queue_size=2
-)
-```
-
-**text2img**
-```python
-# img2img - automatic
-await client1.img2img(
-    executor=Executor.AUTOMATIC1111, 
-    premium=1, 
-    moderate=1, 
-    sync_with_s3=True, 
-    user_id=1, 
-    chat_id=1, 
-    message_id=1, 
-    payload=automatic1111_text2img_payload, 
-    max_user_queue_size=2
-)
+{
+    "object_id": id,
+    "service": Service,
+    "message_type": MessageType,
+    "executor": ExecutorType,
+    "gen_type": GenType,
+    "gen_status": GenStatus,
+    "avg_time": 0.0,
+    "result": {
+        "content_type": ContentType,
+        "content": 0
+    },
+    "settings": {
+        "premium": 1,
+        "moderate": 1,
+        "sync_with_s3": 1
+    },
+    "service_info": {
+        "user_id": 123,
+        "chat_id": 123,     # Optional
+        "message_id": 123   # Optional
+    },
+    "payload": PAYLOAD
+}
 ```
