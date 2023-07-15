@@ -1,1 +1,1 @@
-# devoid-generator
+# Devoid-AI-Image-Generator

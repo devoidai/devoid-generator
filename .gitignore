@@ -1,0 +1,9 @@
+.venv
+images
+logs
+gens
+__pycache__
+.vscode
+test.py
+aaaaa.png
+*.zip
